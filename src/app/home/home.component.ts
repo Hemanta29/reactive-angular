@@ -15,6 +15,9 @@ import {
 import { HttpClient } from "@angular/common/http";
 import { MatDialog, MatDialogConfig } from "@angular/material/dialog";
 import { CourseDialogComponent } from "../course-dialog/course-dialog.component";
+import { CoursesService } from "../services/courses.service";
+import { LoadingService } from "../services/loading.service";
+import { MessagesService } from "../services/messages.service";
 
 @Component({
   selector: "home",
@@ -22,35 +25,41 @@ import { CourseDialogComponent } from "../course-dialog/course-dialog.component"
   styleUrls: ["./home.component.css"],
 })
 export class HomeComponent implements OnInit {
-  beginnerCourses: Course[];
+  beginnerCourses$: Observable<Course[]>;
 
-  advancedCourses: Course[];
+  advancedCourses$: Observable<Course[]>;
 
-  constructor(private http: HttpClient, private dialog: MatDialog) {}
+  constructor(
+    private coursesService: CoursesService,
+    private loadingService: LoadingService,
+    private messagesService: MessagesService
+  ) {}
 
   ngOnInit() {
-    this.http.get("/api/courses").subscribe((res) => {
-      const courses: Course[] = res["payload"].sort(sortCoursesBySeqNo);
-
-      this.beginnerCourses = courses.filter(
-        (course) => course.category == "BEGINNER"
-      );
-
-      this.advancedCourses = courses.filter(
-        (course) => course.category == "ADVANCED"
-      );
-    });
+    this.reloadCourses();
   }
 
-  editCourse(course: Course) {
-    const dialogConfig = new MatDialogConfig();
+  reloadCourses(): void {
+    const courses$ = this.coursesService.loadAllCourses().pipe(
+      map((courses) => courses.sort(sortCoursesBySeqNo)),
+      catchError((err) => {
+        const message = "Could not load courses.";
+        this.messagesService.showError(message);
+        console.log(message, err);
+        return throwError(err);
+      })
+    );
 
-    dialogConfig.disableClose = true;
-    dialogConfig.autoFocus = true;
-    dialogConfig.width = "400px";
-
-    dialogConfig.data = course;
-
-    const dialogRef = this.dialog.open(CourseDialogComponent, dialogConfig);
+    const loadCourses$ = this.loadingService.showLoaderUntilCompleted(courses$);
+    this.beginnerCourses$ = loadCourses$.pipe(
+      map((courses) =>
+        courses.filter((course) => course.category == "BEGINNER")
+      )
+    );
+    this.advancedCourses$ = loadCourses$.pipe(
+      map((courses) =>
+        courses.filter((course) => course.category == "ADVANCED")
+      )
+    );
   }
 }
